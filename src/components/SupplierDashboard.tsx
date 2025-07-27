@@ -263,7 +263,7 @@ const SupplierDashboard: React.FC = () => {
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Price per unit (₹) *
+                        Price per kg (₹) *
                       </label>
                       <input
                         type="number"
@@ -278,14 +278,14 @@ const SupplierDashboard: React.FC = () => {
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Stock Available (units) *
+                        Stock Available (kg) *
                       </label>
                       <input
                         type="number"
                         value={productForm.stock}
                         onChange={(e) => setProductForm(prev => ({ ...prev, stock: e.target.value }))}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                        placeholder="e.g., 100"
+                        placeholder="e.g., 100 kg"
                         required
                       />
                     </div>
@@ -350,8 +350,8 @@ const SupplierDashboard: React.FC = () => {
                     
                     <div className="flex justify-between items-center mb-4">
                       <div>
-                        <div className="text-2xl font-bold text-green-600">₹{product.price}/unit</div>
-                        <div className="text-sm text-gray-600">Stock: {product.stock} units</div>
+                        <div className="text-2xl font-bold text-green-600">₹{product.price}/kg</div>
+                        <div className="text-sm text-gray-600">Stock: {product.stock} kg</div>
                       </div>
                       <button
                         onClick={() => deleteProduct(product.id)}
@@ -421,19 +421,32 @@ const SupplierDashboard: React.FC = () => {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
                         <div>
                           <span className="text-gray-600">Quantity:</span>
-                          <div className="font-semibold">{order.quantity} units</div>
+                          <div className="font-semibold">{order.quantity} kg</div>
                         </div>
                         <div>
                           <span className="text-gray-600">Total Amount:</span>
                           <div className="font-semibold text-green-600">₹{order.total_amount}</div>
                         </div>
                         <div>
-                          <span className="text-gray-600">Delivery Date:</span>
-                          <div className="font-semibold">{new Date(order.delivery_date).toLocaleDateString()}</div>
+                          <span className="text-gray-600">Delivery By:</span>
+                          <div className="font-semibold">{new Date(order.estimated_delivery).toLocaleString('en-IN', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true,
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric'
+                          })}</div>
                         </div>
                         <div>
-                          <span className="text-gray-600">Order Date:</span>
-                          <div className="font-semibold">{new Date(order.created_at).toLocaleDateString()}</div>
+                          <span className="text-gray-600">Ordered At:</span>
+                          <div className="font-semibold">{new Date(order.order_time).toLocaleString('en-IN', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true,
+                            day: 'numeric',
+                            month: 'short'
+                          })}</div>
                         </div>
                       </div>
 

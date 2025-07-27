@@ -35,7 +35,8 @@ export type Order = {
   quantity: number
   total_amount: number
   status: 'Pending' | 'Out for Delivery' | 'Delivered'
-  delivery_date: string
+  order_time: string
+  estimated_delivery: string
   created_at: string
   product_name: string
   product_image: string

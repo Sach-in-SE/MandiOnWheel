@@ -115,8 +115,8 @@ const VendorDashboard: React.FC = () => {
       const allOrders = JSON.parse(localStorage.getItem('mandi_orders') || '[]')
       const allProducts = JSON.parse(localStorage.getItem('mandi_products') || '[]')
       
-      const tomorrow = new Date()
-      tomorrow.setDate(tomorrow.getDate() + 1)
+      const now = new Date()
+      const deliveryTime = new Date(now.getTime() + (2.5 * 60 * 60 * 1000)) // 2.5 hours from now
       
       for (const item of items) {
         const totalAmount = item.product.price * item.quantity
@@ -131,7 +131,8 @@ const VendorDashboard: React.FC = () => {
           quantity: item.quantity,
           total_amount: totalAmount,
           status: 'Pending' as const,
-          delivery_date: tomorrow.toISOString().split('T')[0],
+        order_time: now.toISOString(),
+        estimated_delivery: deliveryTime.toISOString(),
           created_at: new Date().toISOString(),
           product_name: item.product.name,
           product_image: item.product.image_url,
@@ -254,11 +255,12 @@ const VendorDashboard: React.FC = () => {
                   
                   <div className="flex justify-between items-center mb-4">
                     <div>
-                      <div className="text-2xl font-bold text-green-600">₹{product.price}/unit</div>
-                      <div className="text-sm text-gray-600">Stock: {product.stock} units</div>
+                      <div className="text-2xl font-bold text-green-600">₹{product.price}/kg</div>
+                      <div className="text-sm text-gray-600">Stock: {product.stock} kg</div>
                     </div>
                     <div className="text-sm text-gray-600">
-                      by {product.supplier_name}
+                      <div>by {product.supplier_name}</div>
+                      <div className="text-xs text-blue-600">📞 {product.supplier_phone}</div>
                     </div>
                   </div>
 
@@ -294,7 +296,7 @@ const VendorDashboard: React.FC = () => {
                       </div>
 
                       <div className="text-sm text-gray-600 mb-2">
-                        Total: ₹{product.price * (buyNowQuantities[product.id] || 1)}
+                        Total: ₹{product.price * (buyNowQuantities[product.id] || 1)} ({(buyNowQuantities[product.id] || 1)} kg)
                       </div>
 
                       <button
@@ -333,8 +335,9 @@ const VendorDashboard: React.FC = () => {
                     />
                     <div className="flex-1">
                       <h3 className="font-semibold text-gray-800">{item.product.name}</h3>
-                      <p className="text-gray-600">₹{item.product.price}/unit</p>
+                      <p className="text-gray-600">₹{item.product.price}/kg</p>
                       <p className="text-sm text-gray-500">by {item.product.supplier_name}</p>
+                      <p className="text-xs text-blue-600">📞 {item.product.supplier_phone}</p>
                     </div>
                     <div className="flex items-center space-x-2">
                       <button
@@ -352,7 +355,7 @@ const VendorDashboard: React.FC = () => {
                       </button>
                     </div>
                     <div className="text-right">
-                      <div className="font-semibold text-green-600">₹{item.product.price * item.quantity}</div>
+                      <div className="font-semibold text-green-600">₹{item.product.price * item.quantity} ({item.quantity} kg)</div>
                       <button
                         onClick={() => removeFromCart(item.product.id)}
                         className="text-red-600 hover:text-red-700 mt-1"
@@ -420,20 +423,38 @@ const VendorDashboard: React.FC = () => {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
                           <span className="text-gray-600">Quantity:</span>
-                          <div className="font-semibold">{order.quantity} units</div>
+                          <div className="font-semibold">{order.quantity} kg</div>
                         </div>
                         <div>
                           <span className="text-gray-600">Total Amount:</span>
                           <div className="font-semibold text-green-600">₹{order.total_amount}</div>
                         </div>
                         <div>
-                          <span className="text-gray-600">Delivery Date:</span>
-                          <div className="font-semibold">{new Date(order.delivery_date).toLocaleDateString()}</div>
+                          <span className="text-gray-600">Delivery By:</span>
+                          <div className="font-semibold">{new Date(order.estimated_delivery).toLocaleString('en-IN', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true,
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric'
+                          })}</div>
                         </div>
                         <div>
-                          <span className="text-gray-600">Order Date:</span>
-                          <div className="font-semibold">{new Date(order.created_at).toLocaleDateString()}</div>
+                          <span className="text-gray-600">Ordered At:</span>
+                          <div className="font-semibold">{new Date(order.order_time).toLocaleString('en-IN', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true,
+                            day: 'numeric',
+                            month: 'short'
+                          })}</div>
                         </div>
+                      </div>
+                      
+                      <div className="mt-2 text-sm text-gray-600">
+                        <span className="font-medium">Supplier:</span> {order.supplier_name}
+                        <span className="ml-4 text-blue-600">📞 {order.supplier_phone}</span>
                       </div>
                     </div>
                   </div>
