@@ -76,12 +76,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const storedUser = localStorage.getItem('mandi_user')
     if (storedUser) {
-      const userData = JSON.parse(storedUser)
-      setUser(userData)
-      // Load cart for this user
-      const storedCart = localStorage.getItem(`mandi_cart_${userData.id}`)
-      if (storedCart) {
-        setCart(JSON.parse(storedCart))
+      try {
+        const userData = JSON.parse(storedUser)
+        setUser(userData)
+        // Load cart for this user
+        const storedCart = localStorage.getItem(`mandi_cart_${userData.id}`)
+        if (storedCart) {
+          setCart(JSON.parse(storedCart))
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error)
+        localStorage.removeItem('mandi_user')
       }
     }
     setLoading(false)
@@ -89,8 +94,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     // Save cart to localStorage whenever it changes
-    if (user) {
-      localStorage.setItem(`mandi_cart_${user.id}`, JSON.stringify(cart))
+    if (user && cart) {
+      try {
+        localStorage.setItem(`mandi_cart_${user.id}`, JSON.stringify(cart))
+      } catch (error) {
+        console.error('Error saving cart:', error)
+      }
     }
   }, [cart, user])
 

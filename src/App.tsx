@@ -1,6 +1,7 @@
 import React from 'react'
 import { BrowserRouter as Router } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import ErrorBoundary from './components/ErrorBoundary'
 import LoginForm from './components/LoginForm'
 import VendorDashboard from './components/VendorDashboard'
 import SupplierDashboard from './components/SupplierDashboard'
@@ -28,11 +29,13 @@ const AppContent: React.FC = () => {
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </Router>
+    <ErrorBoundary>
+      <Router>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </Router>
+    </ErrorBoundary>
   )
 }
 
