@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth, Product, Order } from '../contexts/AuthContext'
-import { Package, ShoppingBag, LogOut, RefreshCw, Plus, Edit, Trash2 } from 'lucide-react'
+import { Package, ShoppingBag, LogOut, Plus, Trash2, Upload, Image as ImageIcon } from 'lucide-react'
 
 const SupplierDashboard: React.FC = () => {
   const { user, logout } = useAuth()
@@ -13,10 +13,9 @@ const SupplierDashboard: React.FC = () => {
 
   const [productForm, setProductForm] = useState({
     name: '',
-    description: '',
     price: '',
-    quantity: '',
-    image_url: ''
+    stock: '',
+    image: null as File | null
   })
 
   useEffect(() => {
@@ -26,7 +25,6 @@ const SupplierDashboard: React.FC = () => {
 
   const fetchProducts = async () => {
     try {
-      // Get products from localStorage
       const allProducts = JSON.parse(localStorage.getItem('mandi_products') || '[]')
       const userProducts = allProducts
         .filter((product: Product) => product.supplier_id === user?.id)
@@ -40,7 +38,6 @@ const SupplierDashboard: React.FC = () => {
 
   const fetchOrders = async () => {
     try {
-      // Get orders from localStorage
       const allOrders = JSON.parse(localStorage.getItem('mandi_orders') || '[]')
       const products = JSON.parse(localStorage.getItem('mandi_products') || '[]')
       const users = JSON.parse(localStorage.getItem('mandi_users') || '[]')
@@ -53,6 +50,7 @@ const SupplierDashboard: React.FC = () => {
           return {
             ...order,
             product_name: product?.name || 'Unknown Product',
+            product_image: product?.image_url || '',
             vendor_name: vendor?.name || 'Unknown Vendor'
           }
         })
@@ -66,35 +64,65 @@ const SupplierDashboard: React.FC = () => {
     }
   }
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        setMessage('Image size should be less than 5MB')
+        return
+      }
+      if (!file.type.startsWith('image/')) {
+        setMessage('Please select a valid image file')
+        return
+      }
+      setProductForm(prev => ({ ...prev, image: file }))
+    }
+  }
+
+  const convertImageToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
   const addProduct = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!productForm.name || !productForm.price || !productForm.quantity) {
+    if (!productForm.name || !productForm.price || !productForm.stock) {
       setMessage('Please fill in all required fields')
       return
     }
 
+    if (!productForm.image) {
+      setMessage('Please upload a product image')
+      return
+    }
+
     try {
-      // Create new product
+      // Convert image to base64 for storage
+      const imageBase64 = await convertImageToBase64(productForm.image)
+      
       const newProduct = {
         id: Date.now().toString(),
         name: productForm.name,
-        description: productForm.description,
         price: parseFloat(productForm.price),
-        quantity: parseInt(productForm.quantity),
-        image_url: productForm.image_url || 'https://images.pexels.com/photos/264537/pexels-photo-264537.jpeg',
+        stock: parseInt(productForm.stock),
+        image_url: imageBase64,
         supplier_id: user?.id || '',
         supplier_name: user?.name || '',
+        supplier_phone: user?.phone || '',
         created_at: new Date().toISOString()
       }
       
-      // Save to localStorage
       const allProducts = JSON.parse(localStorage.getItem('mandi_products') || '[]')
       allProducts.push(newProduct)
       localStorage.setItem('mandi_products', JSON.stringify(allProducts))
 
       setMessage('Product added successfully!')
-      setProductForm({ name: '', description: '', price: '', quantity: '', image_url: '' })
+      setProductForm({ name: '', price: '', stock: '', image: null })
       setShowAddProduct(false)
       fetchProducts()
     } catch (error) {
@@ -106,7 +134,6 @@ const SupplierDashboard: React.FC = () => {
     if (!confirm('Are you sure you want to delete this product?')) return
 
     try {
-      // Remove product from localStorage
       const allProducts = JSON.parse(localStorage.getItem('mandi_products') || '[]')
       const updatedProducts = allProducts.filter((product: Product) => product.id !== productId)
       localStorage.setItem('mandi_products', JSON.stringify(updatedProducts))
@@ -118,9 +145,8 @@ const SupplierDashboard: React.FC = () => {
     }
   }
 
-  const updateOrderStatus = async (orderId: string, status: 'confirmed' | 'delivered') => {
+  const updateOrderStatus = async (orderId: string, status: 'Out for Delivery' | 'Delivered') => {
     try {
-      // Update order status in localStorage
       const allOrders = JSON.parse(localStorage.getItem('mandi_orders') || '[]')
       const orderIndex = allOrders.findIndex((order: Order) => order.id === orderId)
       
@@ -129,7 +155,7 @@ const SupplierDashboard: React.FC = () => {
         localStorage.setItem('mandi_orders', JSON.stringify(allOrders))
       }
 
-      setMessage(`Order ${status} successfully!`)
+      setMessage(`Order marked as ${status.toLowerCase()}!`)
       fetchOrders()
     } catch (error) {
       setMessage('Failed to update order status. Please try again.')
@@ -140,7 +166,7 @@ const SupplierDashboard: React.FC = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <RefreshCw className="animate-spin mx-auto mb-4" size={48} />
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
           <p>Loading...</p>
         </div>
       </div>
@@ -219,84 +245,94 @@ const SupplierDashboard: React.FC = () => {
             {showAddProduct && (
               <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Add New Product</h3>
-                <form onSubmit={addProduct} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Product Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={productForm.name}
-                      onChange={(e) => setProductForm(prev => ({ ...prev, name: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="e.g., Fresh Tomatoes"
-                      required
-                    />
+                <form onSubmit={addProduct} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Product Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={productForm.name}
+                        onChange={(e) => setProductForm(prev => ({ ...prev, name: e.target.value }))}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="e.g., Fresh Tomatoes"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Price per unit (₹) *
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={productForm.price}
+                        onChange={(e) => setProductForm(prev => ({ ...prev, price: e.target.value }))}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="e.g., 50"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Stock Available (units) *
+                      </label>
+                      <input
+                        type="number"
+                        value={productForm.stock}
+                        onChange={(e) => setProductForm(prev => ({ ...prev, stock: e.target.value }))}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="e.g., 100"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Product Image *
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                          id="image-upload"
+                          required
+                        />
+                        <label
+                          htmlFor="image-upload"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent cursor-pointer flex items-center space-x-2 hover:bg-gray-50 transition-colors"
+                        >
+                          <Upload size={20} className="text-gray-400" />
+                          <span className="text-gray-600">
+                            {productForm.image ? productForm.image.name : 'Choose image file'}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Price per kg (₹) *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={productForm.price}
-                      onChange={(e) => setProductForm(prev => ({ ...prev, price: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="e.g., 50"
-                      required
-                    />
-                  </div>
+                  {productForm.image && (
+                    <div className="mt-4">
+                      <p className="text-sm font-medium text-gray-700 mb-2">Preview:</p>
+                      <img
+                        src={URL.createObjectURL(productForm.image)}
+                        alt="Preview"
+                        className="w-32 h-32 object-cover rounded-lg border"
+                      />
+                    </div>
+                  )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Quantity Available (kg) *
-                    </label>
-                    <input
-                      type="number"
-                      value={productForm.quantity}
-                      onChange={(e) => setProductForm(prev => ({ ...prev, quantity: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="e.g., 100"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Image URL
-                    </label>
-                    <input
-                      type="url"
-                      value={productForm.image_url}
-                      onChange={(e) => setProductForm(prev => ({ ...prev, image_url: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="https://example.com/image.jpg"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Description
-                    </label>
-                    <textarea
-                      value={productForm.description}
-                      onChange={(e) => setProductForm(prev => ({ ...prev, description: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      rows={3}
-                      placeholder="Describe your product..."
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <button
-                      type="submit"
-                      className="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors"
-                    >
-                      Add Product
-                    </button>
-                  </div>
+                  <button
+                    type="submit"
+                    className="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors"
+                  >
+                    Add Product
+                  </button>
                 </form>
               </div>
             )}
@@ -311,21 +347,18 @@ const SupplierDashboard: React.FC = () => {
                   />
                   <div className="p-6">
                     <h3 className="text-xl font-semibold text-gray-800 mb-2">{product.name}</h3>
-                    <p className="text-gray-600 mb-3 text-sm">{product.description}</p>
                     
                     <div className="flex justify-between items-center mb-4">
                       <div>
-                        <div className="text-2xl font-bold text-green-600">₹{product.price}/kg</div>
-                        <div className="text-sm text-gray-600">Stock: {product.quantity} kg</div>
+                        <div className="text-2xl font-bold text-green-600">₹{product.price}/unit</div>
+                        <div className="text-sm text-gray-600">Stock: {product.stock} units</div>
                       </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => deleteProduct(product.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => deleteProduct(product.id)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </div>
 
                     <div className="text-sm text-gray-500">
@@ -363,64 +396,74 @@ const SupplierDashboard: React.FC = () => {
             ) : (
               orders.map((order) => (
                 <div key={order.id} className="bg-white rounded-xl shadow-sm border p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-800">{order.product_name}</h3>
-                      <p className="text-gray-600">Vendor: {order.vendor_name}</p>
-                    </div>
-                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      order.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
-                      'bg-green-100 text-green-800'
-                    }`}>
-                      {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                  <div className="flex items-start space-x-4">
+                    <img
+                      src={order.product_image}
+                      alt={order.product_name}
+                      className="w-16 h-16 object-cover rounded-lg"
+                    />
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-800">{order.product_name}</h3>
+                          <p className="text-gray-600">Vendor: {order.vendor_name}</p>
+                          <p className="text-sm text-gray-500">Phone: {order.vendor_phone}</p>
+                        </div>
+                        <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          order.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
+                          order.status === 'Out for Delivery' ? 'bg-blue-100 text-blue-800' :
+                          'bg-green-100 text-green-800'
+                        }`}>
+                          {order.status}
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                        <div>
+                          <span className="text-gray-600">Quantity:</span>
+                          <div className="font-semibold">{order.quantity} units</div>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Total Amount:</span>
+                          <div className="font-semibold text-green-600">₹{order.total_amount}</div>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Delivery Date:</span>
+                          <div className="font-semibold">{new Date(order.delivery_date).toLocaleDateString()}</div>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Order Date:</span>
+                          <div className="font-semibold">{new Date(order.created_at).toLocaleDateString()}</div>
+                        </div>
+                      </div>
+
+                      {order.status === 'Pending' && (
+                        <div className="flex space-x-3">
+                          <button
+                            onClick={() => updateOrderStatus(order.id, 'Out for Delivery')}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                          >
+                            Mark Out for Delivery
+                          </button>
+                          <button
+                            onClick={() => updateOrderStatus(order.id, 'Delivered')}
+                            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                          >
+                            Mark as Delivered
+                          </button>
+                        </div>
+                      )}
+
+                      {order.status === 'Out for Delivery' && (
+                        <button
+                          onClick={() => updateOrderStatus(order.id, 'Delivered')}
+                          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          Mark as Delivered
+                        </button>
+                      )}
                     </div>
                   </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
-                    <div>
-                      <span className="text-gray-600">Quantity:</span>
-                      <div className="font-semibold">{order.quantity} kg</div>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Total Amount:</span>
-                      <div className="font-semibold text-green-600">₹{order.total_amount}</div>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Order Date:</span>
-                      <div className="font-semibold">{new Date(order.created_at).toLocaleDateString()}</div>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Order Time:</span>
-                      <div className="font-semibold">{new Date(order.created_at).toLocaleTimeString()}</div>
-                    </div>
-                  </div>
-
-                  {order.status === 'pending' && (
-                    <div className="flex space-x-3">
-                      <button
-                        onClick={() => updateOrderStatus(order.id, 'confirmed')}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                      >
-                        Confirm Order
-                      </button>
-                      <button
-                        onClick={() => updateOrderStatus(order.id, 'delivered')}
-                        className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-                      >
-                        Mark as Delivered
-                      </button>
-                    </div>
-                  )}
-
-                  {order.status === 'confirmed' && (
-                    <button
-                      onClick={() => updateOrderStatus(order.id, 'delivered')}
-                      className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-                    >
-                      Mark as Delivered
-                    </button>
-                  )}
                 </div>
               ))
             )}

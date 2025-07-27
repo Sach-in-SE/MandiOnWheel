@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth, Product, Order } from '../contexts/AuthContext'
-import { ShoppingCart, Package, LogOut, RefreshCw, Plus, Minus } from 'lucide-react'
+import { ShoppingCart, Package, LogOut, Plus, Minus, Trash2, ShoppingBag } from 'lucide-react'
 
 const VendorDashboard: React.FC = () => {
-  const { user, logout } = useAuth()
+  const { user, logout, cart, addToCart, removeFromCart, updateCartQuantity, clearCart, getCartTotal } = useAuth()
   const [products, setProducts] = useState<Product[]>([])
   const [orders, setOrders] = useState<Order[]>([])
-  const [activeTab, setActiveTab] = useState<'products' | 'orders'>('products')
+  const [activeTab, setActiveTab] = useState<'products' | 'cart' | 'orders'>('products')
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
-  const [orderQuantities, setOrderQuantities] = useState<{ [key: string]: number }>({})
+  const [buyNowQuantities, setBuyNowQuantities] = useState<{ [key: string]: number }>({})
 
   useEffect(() => {
     fetchProducts()
@@ -18,17 +18,17 @@ const VendorDashboard: React.FC = () => {
 
   const fetchProducts = async () => {
     try {
-      // Get products from localStorage
       const allProducts = JSON.parse(localStorage.getItem('mandi_products') || '[]')
       const users = JSON.parse(localStorage.getItem('mandi_users') || '[]')
       
       const availableProducts = allProducts
-        .filter((product: Product) => product.quantity > 0)
+        .filter((product: Product) => product.stock > 0)
         .map((product: Product) => {
           const supplier = users.find((u: any) => u.id === product.supplier_id)
           return {
             ...product,
-            supplier_name: supplier?.name || 'Unknown Supplier'
+            supplier_name: supplier?.name || 'Unknown Supplier',
+            supplier_phone: supplier?.phone || ''
           }
         })
         .sort((a: Product, b: Product) => a.price - b.price)
@@ -41,7 +41,6 @@ const VendorDashboard: React.FC = () => {
 
   const fetchOrders = async () => {
     try {
-      // Get orders from localStorage
       const allOrders = JSON.parse(localStorage.getItem('mandi_orders') || '[]')
       const products = JSON.parse(localStorage.getItem('mandi_products') || '[]')
       const users = JSON.parse(localStorage.getItem('mandi_users') || '[]')
@@ -54,6 +53,7 @@ const VendorDashboard: React.FC = () => {
           return {
             ...order,
             product_name: product?.name || 'Unknown Product',
+            product_image: product?.image_url || '',
             supplier_name: supplier?.name || 'Unknown Supplier'
           }
         })
@@ -67,59 +67,94 @@ const VendorDashboard: React.FC = () => {
     }
   }
 
-  const updateQuantity = (productId: string, change: number) => {
-    setOrderQuantities(prev => ({
+  const updateBuyNowQuantity = (productId: string, change: number) => {
+    setBuyNowQuantities(prev => ({
       ...prev,
-      [productId]: Math.max(0, (prev[productId] || 1) + change)
+      [productId]: Math.max(1, (prev[productId] || 1) + change)
     }))
   }
 
-  const placeOrder = async (product: Product) => {
-    const quantity = orderQuantities[product.id] || 1
-    
-    if (quantity <= 0) {
-      setMessage('Please select a valid quantity')
-      return
-    }
+  const handleAddToCart = (product: Product) => {
+    addToCart(product, 1)
+    setMessage(`${product.name} added to cart!`)
+    setTimeout(() => setMessage(''), 3000)
+  }
 
-    if (quantity > product.quantity) {
+  const handleBuyNow = async (product: Product) => {
+    const quantity = buyNowQuantities[product.id] || 1
+    
+    if (quantity > product.stock) {
       setMessage('Not enough stock available')
       return
     }
 
+    await placeOrder([{ product, quantity }])
+  }
+
+  const handleCartCheckout = async () => {
+    if (cart.length === 0) {
+      setMessage('Your cart is empty')
+      return
+    }
+
+    // Check stock availability
+    for (const item of cart) {
+      const currentProduct = products.find(p => p.id === item.product.id)
+      if (!currentProduct || item.quantity > currentProduct.stock) {
+        setMessage(`Not enough stock for ${item.product.name}`)
+        return
+      }
+    }
+
+    await placeOrder(cart)
+    clearCart()
+  }
+
+  const placeOrder = async (items: { product: Product; quantity: number }[]) => {
     try {
-      const totalAmount = product.price * quantity
-
-      // Create new order
-      const newOrder = {
-        id: Date.now().toString(),
-        product_id: product.id,
-        vendor_id: user?.id,
-        supplier_id: product.supplier_id,
-        quantity,
-        total_amount: totalAmount,
-        status: 'pending' as const,
-        created_at: new Date().toISOString(),
-        product_name: product.name,
-        vendor_name: user?.name || '',
-        supplier_name: product.supplier_name
-      }
-      
-      // Save order to localStorage
       const allOrders = JSON.parse(localStorage.getItem('mandi_orders') || '[]')
-      allOrders.push(newOrder)
-      localStorage.setItem('mandi_orders', JSON.stringify(allOrders))
-      
-      // Update product quantity
       const allProducts = JSON.parse(localStorage.getItem('mandi_products') || '[]')
-      const productIndex = allProducts.findIndex((p: Product) => p.id === product.id)
-      if (productIndex !== -1) {
-        allProducts[productIndex].quantity -= quantity
-        localStorage.setItem('mandi_products', JSON.stringify(allProducts))
-      }
+      
+      const tomorrow = new Date()
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      
+      for (const item of items) {
+        const totalAmount = item.product.price * item.quantity
 
+        const newOrder = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          product_id: item.product.id,
+          vendor_id: user?.id,
+          vendor_phone: user?.phone,
+          supplier_id: item.product.supplier_id,
+          supplier_phone: item.product.supplier_phone,
+          quantity: item.quantity,
+          total_amount: totalAmount,
+          status: 'Pending' as const,
+          delivery_date: tomorrow.toISOString().split('T')[0],
+          created_at: new Date().toISOString(),
+          product_name: item.product.name,
+          product_image: item.product.image_url,
+          vendor_name: user?.name || '',
+          supplier_name: item.product.supplier_name
+        }
+        
+        allOrders.push(newOrder)
+        
+        // Update product stock
+        const productIndex = allProducts.findIndex((p: Product) => p.id === item.product.id)
+        if (productIndex !== -1) {
+          allProducts[productIndex].stock -= item.quantity
+        }
+      }
+      
+      localStorage.setItem('mandi_orders', JSON.stringify(allOrders))
+      localStorage.setItem('mandi_products', JSON.stringify(allProducts))
+
+      const totalAmount = items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0)
       setMessage(`Order placed successfully! Total: ₹${totalAmount}`)
-      setOrderQuantities(prev => ({ ...prev, [product.id]: 1 }))
+      
+      setBuyNowQuantities({})
       fetchProducts()
       fetchOrders()
     } catch (error) {
@@ -131,7 +166,7 @@ const VendorDashboard: React.FC = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <RefreshCw className="animate-spin mx-auto mb-4" size={48} />
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
           <p>Loading...</p>
         </div>
       </div>
@@ -168,8 +203,19 @@ const VendorDashboard: React.FC = () => {
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
-            <ShoppingCart size={20} />
+            <ShoppingBag size={20} />
             <span>Browse Products</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('cart')}
+            className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-lg transition-colors ${
+              activeTab === 'cart'
+                ? 'bg-green-600 text-white'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            <ShoppingCart size={20} />
+            <span>Cart ({cart.length})</span>
           </button>
           <button
             onClick={() => setActiveTab('orders')}
@@ -186,7 +232,7 @@ const VendorDashboard: React.FC = () => {
 
         {message && (
           <div className={`mb-6 p-4 rounded-lg ${
-            message.includes('successful') 
+            message.includes('successful') || message.includes('added')
               ? 'bg-green-100 text-green-700' 
               : 'bg-red-100 text-red-700'
           }`}>
@@ -205,53 +251,137 @@ const VendorDashboard: React.FC = () => {
                 />
                 <div className="p-6">
                   <h3 className="text-xl font-semibold text-gray-800 mb-2">{product.name}</h3>
-                  <p className="text-gray-600 mb-3 text-sm">{product.description}</p>
                   
                   <div className="flex justify-between items-center mb-4">
                     <div>
-                      <div className="text-2xl font-bold text-green-600">₹{product.price}/kg</div>
-                      <div className="text-sm text-gray-600">Stock: {product.quantity} kg</div>
+                      <div className="text-2xl font-bold text-green-600">₹{product.price}/unit</div>
+                      <div className="text-sm text-gray-600">Stock: {product.stock} units</div>
                     </div>
                     <div className="text-sm text-gray-600">
                       by {product.supplier_name}
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-sm font-medium text-gray-700">Quantity (kg):</span>
-                    <div className="flex items-center space-x-3">
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => handleAddToCart(product)}
+                      disabled={product.stock === 0}
+                      className="w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Add to Cart
+                    </button>
+
+                    <div className="border-t pt-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">Buy Now:</span>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => updateBuyNowQuantity(product.id, -1)}
+                            className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300 transition-colors"
+                          >
+                            <Minus size={16} />
+                          </button>
+                          <span className="w-12 text-center font-semibold">
+                            {buyNowQuantities[product.id] || 1}
+                          </span>
+                          <button
+                            onClick={() => updateBuyNowQuantity(product.id, 1)}
+                            className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300 transition-colors"
+                          >
+                            <Plus size={16} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="text-sm text-gray-600 mb-2">
+                        Total: ₹{product.price * (buyNowQuantities[product.id] || 1)}
+                      </div>
+
                       <button
-                        onClick={() => updateQuantity(product.id, -1)}
+                        onClick={() => handleBuyNow(product)}
+                        disabled={product.stock === 0}
+                        className="w-full bg-green-600 text-white py-2 rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {product.stock === 0 ? 'Out of Stock' : 'Buy Now'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'cart' && (
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-6">Shopping Cart</h2>
+            
+            {cart.length === 0 ? (
+              <div className="text-center py-8">
+                <ShoppingCart size={48} className="mx-auto text-gray-400 mb-4" />
+                <h3 className="text-xl font-semibold text-gray-600 mb-2">Your cart is empty</h3>
+                <p className="text-gray-500">Add some products to get started</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {cart.map((item) => (
+                  <div key={item.product.id} className="flex items-center space-x-4 p-4 border rounded-lg">
+                    <img
+                      src={item.product.image_url}
+                      alt={item.product.name}
+                      className="w-16 h-16 object-cover rounded-lg"
+                    />
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-800">{item.product.name}</h3>
+                      <p className="text-gray-600">₹{item.product.price}/unit</p>
+                      <p className="text-sm text-gray-500">by {item.product.supplier_name}</p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => updateCartQuantity(item.product.id, item.quantity - 1)}
                         className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300 transition-colors"
                       >
                         <Minus size={16} />
                       </button>
-                      <span className="w-12 text-center font-semibold">
-                        {orderQuantities[product.id] || 1}
-                      </span>
+                      <span className="w-12 text-center font-semibold">{item.quantity}</span>
                       <button
-                        onClick={() => updateQuantity(product.id, 1)}
+                        onClick={() => updateCartQuantity(item.product.id, item.quantity + 1)}
                         className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300 transition-colors"
                       >
                         <Plus size={16} />
                       </button>
                     </div>
+                    <div className="text-right">
+                      <div className="font-semibold text-green-600">₹{item.product.price * item.quantity}</div>
+                      <button
+                        onClick={() => removeFromCart(item.product.id)}
+                        className="text-red-600 hover:text-red-700 mt-1"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
-
-                  <div className="text-sm text-gray-600 mb-4">
-                    Total: ₹{product.price * (orderQuantities[product.id] || 1)}
+                ))}
+                
+                <div className="border-t pt-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-xl font-semibold text-gray-800">Total: ₹{getCartTotal()}</span>
+                    <button
+                      onClick={clearCart}
+                      className="text-red-600 hover:text-red-700 font-medium"
+                    >
+                      Clear Cart
+                    </button>
                   </div>
-
                   <button
-                    onClick={() => placeOrder(product)}
-                    disabled={product.quantity === 0}
-                    className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={handleCartCheckout}
+                    className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors"
                   >
-                    {product.quantity === 0 ? 'Out of Stock' : 'Place Order'}
+                    Place Order
                   </button>
                 </div>
               </div>
-            ))}
+            )}
           </div>
         )}
 
@@ -266,36 +396,45 @@ const VendorDashboard: React.FC = () => {
             ) : (
               orders.map((order) => (
                 <div key={order.id} className="bg-white rounded-xl shadow-sm border p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-800">{order.product_name}</h3>
-                      <p className="text-gray-600">Supplier: {order.supplier_name}</p>
-                    </div>
-                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      order.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
-                      'bg-green-100 text-green-800'
-                    }`}>
-                      {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-600">Quantity:</span>
-                      <div className="font-semibold">{order.quantity} kg</div>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Total Amount:</span>
-                      <div className="font-semibold text-green-600">₹{order.total_amount}</div>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Order Date:</span>
-                      <div className="font-semibold">{new Date(order.created_at).toLocaleDateString()}</div>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Order Time:</span>
-                      <div className="font-semibold">{new Date(order.created_at).toLocaleTimeString()}</div>
+                  <div className="flex items-start space-x-4">
+                    <img
+                      src={order.product_image}
+                      alt={order.product_name}
+                      className="w-16 h-16 object-cover rounded-lg"
+                    />
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-800">{order.product_name}</h3>
+                          <p className="text-gray-600">Supplier: {order.supplier_name}</p>
+                        </div>
+                        <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          order.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
+                          order.status === 'Out for Delivery' ? 'bg-blue-100 text-blue-800' :
+                          'bg-green-100 text-green-800'
+                        }`}>
+                          {order.status}
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-600">Quantity:</span>
+                          <div className="font-semibold">{order.quantity} units</div>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Total Amount:</span>
+                          <div className="font-semibold text-green-600">₹{order.total_amount}</div>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Delivery Date:</span>
+                          <div className="font-semibold">{new Date(order.delivery_date).toLocaleDateString()}</div>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Order Date:</span>
+                          <div className="font-semibold">{new Date(order.created_at).toLocaleDateString()}</div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
